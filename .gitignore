@@ -1,0 +1,32 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+venv311/
+.venv/
+
+# Build artifacts
+build/
+dist/
+dist-launcher/
+*.spec.bak
+
+# Test/cache tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local machine/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local accidental file in this workspace
+Last login: Thu Feb 12 21:22:08 on ttys0.ini
