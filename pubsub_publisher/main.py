@@ -2,9 +2,10 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
+    QFrame,
     QGraphicsOpacityEffect,
     QLabel,
     QStyleFactory,
@@ -23,8 +24,21 @@ def _assets_dir() -> Path:
     return Path(__file__).resolve().parent / "assets"
 
 
+def _app_icon_path(assets_dir: Path) -> Path:
+    if sys.platform == "darwin":
+        macos_icon = assets_dir / "AppIcon.icns"
+        if macos_icon.exists():
+            return macos_icon
+    return assets_dir / "icon.png"
+
+
+def _should_set_runtime_icon() -> bool:
+    # For bundled macOS apps, keep the Dock icon from Info.plist unchanged.
+    return not (sys.platform == "darwin" and getattr(sys, "frozen", False))
+
+
 class AnimatedSplashScreen(QWidget):
-    def __init__(self, icon_path: Path, splash_path: Path) -> None:
+    def __init__(self, icon_path: Path) -> None:
         super().__init__()
         self.setWindowFlags(
             Qt.WindowType.SplashScreen
@@ -36,47 +50,49 @@ class AnimatedSplashScreen(QWidget):
         self._dot_index = 0
         self._spinner_states = ["", ".", "..", "..."]
 
-        self.setAutoFillBackground(True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        if splash_path.exists():
-            banner = QLabel()
-            banner_pixmap = QPixmap(str(splash_path))
-            if not banner_pixmap.isNull():
-                banner.setPixmap(
-                    banner_pixmap.scaled(
-                        360,
-                        120,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                )
-                banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                layout.addWidget(banner)
+        card = QFrame()
+        card.setObjectName("splashCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(24, 20, 24, 20)
+        card_layout.setSpacing(8)
 
-        self.icon_label = QLabel()
+        self.icon_label = QLabel(card)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_pixmap = QPixmap(str(icon_path))
+        app_icon = QIcon(str(icon_path))
+        icon_pixmap = app_icon.pixmap(84, 84)
         if not icon_pixmap.isNull():
-            self.icon_label.setPixmap(
-                icon_pixmap.scaled(
-                    84,
-                    84,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
-        layout.addWidget(self.icon_label)
+            self.icon_label.setPixmap(icon_pixmap)
+        card_layout.addWidget(self.icon_label)
 
-        title = QLabel("PubSub Publisher")
+        title = QLabel("PubSub Publisher", card)
+        title_font = QFont(title.font())
+        title_font.setPointSize(title_font.pointSize() + 2)
+        title_font.setWeight(QFont.Weight.DemiBold)
+        title.setFont(title_font)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        card_layout.addWidget(title)
 
-        self.status_label = QLabel("Starting application")
+        self.status_label = QLabel("Starting application", card)
+        self.status_label.setObjectName("status")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.status_label)
+        card_layout.addWidget(self.status_label)
+
+        layout.addWidget(card)
+        self.setStyleSheet(
+            """
+            #splashCard {
+                background: palette(base);
+                border: 1px solid palette(mid);
+                border-radius: 12px;
+            }
+            QLabel#status {
+                color: palette(dark);
+            }
+            """
+        )
 
         self._tick_timer = QTimer(self)
         self._tick_timer.timeout.connect(self._tick_status)
@@ -133,12 +149,13 @@ def main() -> int:
     app.setApplicationName("PubSub Publisher")
     _set_native_macos_style(app)
     assets_dir = _assets_dir()
-    icon_path = assets_dir / "icon.png"
-    splash_path = assets_dir / "splash.png"
+    icon_path = _app_icon_path(assets_dir)
     if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
+        app_icon = QIcon(str(icon_path))
+        if not app_icon.isNull() and _should_set_runtime_icon():
+            app.setWindowIcon(app_icon)
 
-    splash = AnimatedSplashScreen(icon_path, splash_path)
+    splash = AnimatedSplashScreen(icon_path)
     splash.show()
     splash.raise_()
     splash.repaint()
@@ -152,10 +169,17 @@ def main() -> int:
 
     set_splash_status("Building window")
     window = MainWindow()
-    set_splash_status("Opening window")
-    window.show()
+    if _should_set_runtime_icon() and not app.windowIcon().isNull():
+        window.setWindowIcon(app.windowIcon())
     set_splash_status("Ready")
-    splash.finish(window)
+
+    def open_main_window() -> None:
+        splash.finish(window)
+        window.show()
+        window.activateWindow()
+
+    # Keep splash visible briefly, then open the main window.
+    QTimer.singleShot(1500, open_main_window)
     return app.exec()
 
 
