@@ -1,4 +1,4 @@
-# PubSub Publisher (PyQt6)
+# PubSub-Publisher
 
 A macOS desktop app to publish messages to Google Cloud Pub/Sub with optional attributes, logs, and CSV export.
 
@@ -9,7 +9,8 @@ A macOS desktop app to publish messages to Google Cloud Pub/Sub with optional at
 
 ## Setup
 ```bash
-cd /Users/raja/pubsub-publisher-app-latest
+git clone https://github.com/naga117/PubSub-Publisher.git
+cd PubSub-Publisher
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

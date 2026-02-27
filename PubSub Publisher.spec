@@ -60,5 +60,5 @@ app = BUNDLE(
     coll,
     name="PubSub Publisher.app",
     icon=ICON,
-    bundle_identifier="com.raja.pubsubpublisher",
+    bundle_identifier="com.pubsubpublisher.app",
 )
