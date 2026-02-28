@@ -5,7 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import QSize, QTimer, Qt
+from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from . import __version__
 from .config import add_project, load_config, remove_project, save_config
 from .models import LogEntry
 from .validators import normalize_attribute_rows, validate_required_fields
@@ -161,6 +163,8 @@ class ProjectConfigDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+    PROJECT_CHANGE_DEBOUNCE_MS = 400
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("PubSub Publisher")
@@ -182,6 +186,9 @@ class MainWindow(QMainWindow):
         self.publish_status_label: Optional[QLabel] = None
         self.bulk_status_label: Optional[QLabel] = None
         self.bulk_progress_counts = {"success": 0, "error": 0}
+        self._project_change_timers: Dict[str, QTimer] = {}
+        self._pending_project_text = {"publish": "", "bulk": ""}
+        self._last_auto_synced_project: Dict[str, Optional[str]] = {"publish": None, "bulk": None}
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -229,10 +236,16 @@ class MainWindow(QMainWindow):
         settings_layout.addLayout(self._build_auth_panel("settings"))
         settings_layout.addWidget(QLabel("Application Settings"))
         settings_layout.addLayout(self._build_settings_panel())
+        settings_layout.addWidget(self._build_version_label())
         settings_layout.addStretch()
 
         self.tabs.addTab(settings_tab, "Settings")
 
+        self._build_menu_bar()
+        self._project_change_timers = {
+            "publish": self._create_project_change_timer("publish"),
+            "bulk": self._create_project_change_timer("bulk"),
+        }
         self._load_projects()
         self._load_settings()
         self._set_publish_status("Idle")
@@ -241,6 +254,105 @@ class MainWindow(QMainWindow):
     def _apply_compact_style(self) -> None:
         # Use native macOS styling for colors and dropdowns.
         self.setStyleSheet("")
+
+    def _build_menu_bar(self) -> None:
+        menu_bar = self.menuBar()
+
+        file_menu = menu_bar.addMenu("File")
+        preferences_action = QAction("Preferences", self)
+        preferences_action.setShortcut(QKeySequence("Meta+,"))
+        preferences_action.setMenuRole(QAction.MenuRole.PreferencesRole)
+        preferences_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
+        file_menu.addAction(preferences_action)
+
+        file_menu.addSeparator()
+        quit_action = QAction("Quit PubSub Publisher", self)
+        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_action.setMenuRole(QAction.MenuRole.QuitRole)
+        quit_action.triggered.connect(self.close)
+        file_menu.addAction(quit_action)
+
+        edit_menu = menu_bar.addMenu("Edit")
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_action.triggered.connect(lambda: self._trigger_focus_widget_action("cut"))
+        edit_menu.addAction(cut_action)
+
+        copy_action = QAction("Copy", self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(lambda: self._trigger_focus_widget_action("copy"))
+        edit_menu.addAction(copy_action)
+
+        paste_action = QAction("Paste", self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.triggered.connect(lambda: self._trigger_focus_widget_action("paste"))
+        edit_menu.addAction(paste_action)
+
+        edit_menu.addSeparator()
+        select_all_action = QAction("Select All", self)
+        select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        select_all_action.triggered.connect(lambda: self._trigger_focus_widget_action("selectAll"))
+        edit_menu.addAction(select_all_action)
+
+        view_menu = menu_bar.addMenu("View")
+        publish_tab_action = QAction("Publish Tab", self)
+        publish_tab_action.setShortcut(QKeySequence("Meta+1"))
+        publish_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(0))
+        view_menu.addAction(publish_tab_action)
+
+        bulk_tab_action = QAction("Bulk Publish Tab", self)
+        bulk_tab_action.setShortcut(QKeySequence("Meta+2"))
+        bulk_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(1))
+        view_menu.addAction(bulk_tab_action)
+
+        settings_tab_action = QAction("Settings Tab", self)
+        settings_tab_action.setShortcut(QKeySequence("Meta+3"))
+        settings_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
+        view_menu.addAction(settings_tab_action)
+
+        window_menu = menu_bar.addMenu("Window")
+        minimize_action = QAction("Minimize", self)
+        minimize_action.setShortcut(QKeySequence("Meta+M"))
+        minimize_action.triggered.connect(self.showMinimized)
+        window_menu.addAction(minimize_action)
+
+        bring_to_front_action = QAction("Bring to Front", self)
+        bring_to_front_action.triggered.connect(self._bring_to_front)
+        window_menu.addAction(bring_to_front_action)
+
+        help_menu = menu_bar.addMenu("Help")
+        about_action = QAction("About PubSub Publisher", self)
+        about_action.setMenuRole(QAction.MenuRole.AboutRole)
+        about_action.triggered.connect(self._show_about_dialog)
+        help_menu.addAction(about_action)
+
+    def _build_version_label(self) -> QLabel:
+        label = QLabel(f"Version: {__version__}")
+        label.setStyleSheet("color: #555;")
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        label.setToolTip("Installed application version")
+        return label
+
+    def _show_about_dialog(self) -> None:
+        QMessageBox.about(
+            self,
+            "About PubSub Publisher",
+            f"PubSub Publisher\nVersion {__version__}",
+        )
+
+    def _bring_to_front(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _trigger_focus_widget_action(self, method_name: str) -> None:
+        widget = self.focusWidget()
+        if widget is None:
+            return
+        method = getattr(widget, method_name, None)
+        if callable(method):
+            method()
 
     def _build_project_panel(self) -> QGridLayout:
         layout = QGridLayout()
@@ -251,7 +363,9 @@ class MainWindow(QMainWindow):
         self.project_combo = CompactComboBox()
         self.project_combo.setEditable(True)
         self.project_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.project_combo.currentTextChanged.connect(self._on_project_changed)
+        self.project_combo.currentTextChanged.connect(
+            lambda project_id: self._queue_project_change("publish", project_id)
+        )
         layout.addWidget(self.project_combo, 0, 1, 1, 2)
 
         config_btn = QPushButton("Projects")
@@ -403,7 +517,9 @@ class MainWindow(QMainWindow):
         self.bulk_project_combo = CompactComboBox()
         self.bulk_project_combo.setEditable(True)
         self.bulk_project_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.bulk_project_combo.currentTextChanged.connect(self._on_project_changed)
+        self.bulk_project_combo.currentTextChanged.connect(
+            lambda project_id: self._queue_project_change("bulk", project_id)
+        )
         layout.addWidget(self.bulk_project_combo, 0, 1, 1, 2)
 
         config_btn = QPushButton("Projects")
@@ -555,15 +671,39 @@ class MainWindow(QMainWindow):
     def _save_config(self) -> None:
         save_config(self.config)
 
-    def _on_project_changed(self, project_id: str) -> None:
-        if project_id and self.config.get("remember_last_project", True):
-            self.config["last_project_id"] = project_id
-            self._save_config()
-        if self.config.get("auto_sync_topics", False):
-            if self.sender() is self.project_combo:
-                self._sync_topics()
-            elif self.sender() is self.bulk_project_combo:
-                self._sync_topics_bulk()
+    def _create_project_change_timer(self, source: str) -> QTimer:
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.setInterval(self.PROJECT_CHANGE_DEBOUNCE_MS)
+        timer.timeout.connect(lambda: self._on_project_changed(source))
+        return timer
+
+    def _queue_project_change(self, source: str, project_id: str) -> None:
+        self._pending_project_text[source] = project_id
+        timer = self._project_change_timers.get(source)
+        if timer:
+            timer.start()
+
+    def _on_project_changed(self, source: str) -> None:
+        project_id = self._pending_project_text.get(source, "").strip()
+        if not project_id:
+            return
+
+        if self.config.get("remember_last_project", True):
+            if self.config.get("last_project_id") != project_id:
+                self.config["last_project_id"] = project_id
+                self._save_config()
+
+        if not self.config.get("auto_sync_topics", False):
+            return
+
+        if self._last_auto_synced_project.get(source) == project_id:
+            return
+
+        if source == "publish":
+            self._sync_topics()
+        elif source == "bulk":
+            self._sync_topics_bulk()
 
     def _open_project_config(self) -> None:
         dialog = ProjectConfigDialog(self, self.config)
@@ -689,6 +829,7 @@ class MainWindow(QMainWindow):
 
         self.sync_btn.setEnabled(False)
         self._set_publish_status("Syncing topics...")
+        self._last_auto_synced_project["publish"] = project_id
         self.topics_worker = ListTopicsWorker(project_id, json_path)
         self.topics_worker.success.connect(self._on_topics_loaded)
         self.topics_worker.error.connect(self._on_topics_error)
@@ -724,6 +865,7 @@ class MainWindow(QMainWindow):
 
         self.bulk_sync_btn.setEnabled(False)
         self._set_bulk_status("Syncing topics...")
+        self._last_auto_synced_project["bulk"] = project_id
         self.bulk_topics_worker = ListTopicsWorker(project_id, json_path)
         self.bulk_topics_worker.success.connect(self._on_bulk_topics_loaded)
         self.bulk_topics_worker.error.connect(self._on_bulk_topics_error)

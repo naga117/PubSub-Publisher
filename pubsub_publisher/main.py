@@ -13,6 +13,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+try:
+    from pubsub_publisher import __version__
+except Exception:  # pragma: no cover - fallback for atypical launcher contexts
+    __version__ = "1.0.1"
+
 
 def _assets_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -147,6 +152,7 @@ def _set_native_macos_style(app: QApplication) -> None:
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("PubSub Publisher")
+    app.setApplicationVersion(__version__)
     _set_native_macos_style(app)
     assets_dir = _assets_dir()
     icon_path = _app_icon_path(assets_dir)

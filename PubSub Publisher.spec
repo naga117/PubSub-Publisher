@@ -7,6 +7,7 @@ BASE_DIR = Path(globals().get("SPECPATH", Path.cwd())).resolve()
 ASSETS_DIR = BASE_DIR / "pubsub_publisher" / "assets"
 ICON_FILE = ASSETS_DIR / "AppIcon.icns"
 ICON = str(ICON_FILE) if ICON_FILE.exists() else None
+APP_VERSION = "1.0.1"
 
 hiddenimports = []
 hiddenimports += collect_submodules("google.cloud.pubsub_v1")
@@ -61,4 +62,8 @@ app = BUNDLE(
     name="PubSub Publisher.app",
     icon=ICON,
     bundle_identifier="com.pubsubpublisher.app",
+    info_plist={
+        "CFBundleShortVersionString": APP_VERSION,
+        "CFBundleVersion": APP_VERSION,
+    },
 )
