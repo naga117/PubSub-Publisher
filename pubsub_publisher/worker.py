@@ -1,5 +1,5 @@
 import csv
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -63,6 +63,8 @@ class ListTopicsWorker(QThread):
 
 
 class BulkPublishWorker(QThread):
+    MAX_IN_FLIGHT = 100
+
     log = pyqtSignal(str, str, str)
     summary = pyqtSignal(int, int)
     error = pyqtSignal(str)
@@ -85,8 +87,29 @@ class BulkPublishWorker(QThread):
     def run(self) -> None:
         success_count = 0
         error_count = 0
+        pending: List[Tuple[Any, int]] = []
+
         try:
-            from .pubsub_client import publish_message
+            from .pubsub_client import get_publisher_client
+
+            publisher = get_publisher_client(self.json_credentials_path)
+            topic_path = publisher.topic_path(self.project_id, self.topic_name)
+
+            def flush_pending() -> None:
+                nonlocal success_count, error_count
+                for future, line_num in pending:
+                    try:
+                        message_id = future.result()
+                        success_count += 1
+                        self.log.emit("SUCCESS", message_id, "")
+                    except Exception as exc:  # noqa: BLE001
+                        error_count += 1
+                        self.log.emit(
+                            "ERROR",
+                            "",
+                            f"line {line_num}: {exc}",
+                        )
+                pending.clear()
 
             with open(self.file_path, "r", encoding="utf-8", newline="") as handle:
                 sample = handle.read(2048)
@@ -104,13 +127,14 @@ class BulkPublishWorker(QThread):
                     self.error.emit("CSV/TSV must include a 'message' column.")
                     return
                 for row in reader:
+                    line_num = reader.line_num
                     message = (row.get("message") or "").strip()
                     if not message:
                         error_count += 1
                         self.log.emit(
                             "ERROR",
                             "",
-                            f"line {reader.line_num}: empty message",
+                            f"line {line_num}: empty message",
                         )
                         continue
                     attributes = {
@@ -119,22 +143,26 @@ class BulkPublishWorker(QThread):
                         if key != "message" and value not in (None, "")
                     }
                     try:
-                        message_id = publish_message(
-                            self.project_id,
-                            self.topic_name,
-                            message,
-                            attributes,
-                            self.json_credentials_path,
+                        future = publisher.publish(
+                            topic_path,
+                            message.encode("utf-8"),
+                            **attributes,
                         )
-                        success_count += 1
-                        self.log.emit("SUCCESS", message_id, "")
                     except Exception as exc:  # noqa: BLE001
                         error_count += 1
                         self.log.emit(
                             "ERROR",
                             "",
-                            f"line {reader.line_num}: {exc}",
+                            f"line {line_num}: {exc}",
                         )
+                        continue
+
+                    pending.append((future, line_num))
+                    if len(pending) >= self.MAX_IN_FLIGHT:
+                        flush_pending()
+
+                if pending:
+                    flush_pending()
         except csv.Error as exc:
             self.error.emit(f"CSV parse error: {exc}")
             return

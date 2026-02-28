@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import QSize, QTimer, Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -161,6 +161,8 @@ class ProjectConfigDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+    PROJECT_CHANGE_DEBOUNCE_MS = 400
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("PubSub Publisher")
@@ -182,6 +184,9 @@ class MainWindow(QMainWindow):
         self.publish_status_label: Optional[QLabel] = None
         self.bulk_status_label: Optional[QLabel] = None
         self.bulk_progress_counts = {"success": 0, "error": 0}
+        self._project_change_timers: Dict[str, QTimer] = {}
+        self._pending_project_text = {"publish": "", "bulk": ""}
+        self._last_auto_synced_project: Dict[str, Optional[str]] = {"publish": None, "bulk": None}
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -233,6 +238,10 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(settings_tab, "Settings")
 
+        self._project_change_timers = {
+            "publish": self._create_project_change_timer("publish"),
+            "bulk": self._create_project_change_timer("bulk"),
+        }
         self._load_projects()
         self._load_settings()
         self._set_publish_status("Idle")
@@ -251,7 +260,9 @@ class MainWindow(QMainWindow):
         self.project_combo = CompactComboBox()
         self.project_combo.setEditable(True)
         self.project_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.project_combo.currentTextChanged.connect(self._on_project_changed)
+        self.project_combo.currentTextChanged.connect(
+            lambda project_id: self._queue_project_change("publish", project_id)
+        )
         layout.addWidget(self.project_combo, 0, 1, 1, 2)
 
         config_btn = QPushButton("Projects")
@@ -403,7 +414,9 @@ class MainWindow(QMainWindow):
         self.bulk_project_combo = CompactComboBox()
         self.bulk_project_combo.setEditable(True)
         self.bulk_project_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.bulk_project_combo.currentTextChanged.connect(self._on_project_changed)
+        self.bulk_project_combo.currentTextChanged.connect(
+            lambda project_id: self._queue_project_change("bulk", project_id)
+        )
         layout.addWidget(self.bulk_project_combo, 0, 1, 1, 2)
 
         config_btn = QPushButton("Projects")
@@ -555,15 +568,39 @@ class MainWindow(QMainWindow):
     def _save_config(self) -> None:
         save_config(self.config)
 
-    def _on_project_changed(self, project_id: str) -> None:
-        if project_id and self.config.get("remember_last_project", True):
-            self.config["last_project_id"] = project_id
-            self._save_config()
-        if self.config.get("auto_sync_topics", False):
-            if self.sender() is self.project_combo:
-                self._sync_topics()
-            elif self.sender() is self.bulk_project_combo:
-                self._sync_topics_bulk()
+    def _create_project_change_timer(self, source: str) -> QTimer:
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.setInterval(self.PROJECT_CHANGE_DEBOUNCE_MS)
+        timer.timeout.connect(lambda: self._on_project_changed(source))
+        return timer
+
+    def _queue_project_change(self, source: str, project_id: str) -> None:
+        self._pending_project_text[source] = project_id
+        timer = self._project_change_timers.get(source)
+        if timer:
+            timer.start()
+
+    def _on_project_changed(self, source: str) -> None:
+        project_id = self._pending_project_text.get(source, "").strip()
+        if not project_id:
+            return
+
+        if self.config.get("remember_last_project", True):
+            if self.config.get("last_project_id") != project_id:
+                self.config["last_project_id"] = project_id
+                self._save_config()
+
+        if not self.config.get("auto_sync_topics", False):
+            return
+
+        if self._last_auto_synced_project.get(source) == project_id:
+            return
+
+        if source == "publish":
+            self._sync_topics()
+        elif source == "bulk":
+            self._sync_topics_bulk()
 
     def _open_project_config(self) -> None:
         dialog = ProjectConfigDialog(self, self.config)
@@ -689,6 +726,7 @@ class MainWindow(QMainWindow):
 
         self.sync_btn.setEnabled(False)
         self._set_publish_status("Syncing topics...")
+        self._last_auto_synced_project["publish"] = project_id
         self.topics_worker = ListTopicsWorker(project_id, json_path)
         self.topics_worker.success.connect(self._on_topics_loaded)
         self.topics_worker.error.connect(self._on_topics_error)
@@ -724,6 +762,7 @@ class MainWindow(QMainWindow):
 
         self.bulk_sync_btn.setEnabled(False)
         self._set_bulk_status("Syncing topics...")
+        self._last_auto_synced_project["bulk"] = project_id
         self.bulk_topics_worker = ListTopicsWorker(project_id, json_path)
         self.bulk_topics_worker.success.connect(self._on_bulk_topics_loaded)
         self.bulk_topics_worker.error.connect(self._on_bulk_topics_error)
