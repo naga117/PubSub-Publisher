@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: vars
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag version matches app version
+        env:
+          TAG_VERSION: ${{ steps.vars.outputs.tag_version }}
+        run: |
+          APP_VERSION="$(python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("pubsub_publisher/__init__.py").read_text(encoding="utf-8")
+          match = re.search(r'__version__\s*=\s*"([^"]+)"', text)
+          print(match.group(1) if match else "")
+          PY
+          )"
+
+          if [ -z "${APP_VERSION}" ]; then
+            echo "Could not read __version__ from pubsub_publisher/__init__.py"
+            exit 1
+          fi
+
+          if [ "${APP_VERSION}" != "${TAG_VERSION}" ]; then
+            echo "Tag version (${TAG_VERSION}) does not match app version (${APP_VERSION})"
+            exit 1
+          fi
+
+      - name: Build release notes from changelog
+        env:
+          TAG_VERSION: ${{ steps.vars.outputs.tag_version }}
+        run: |
+          python scripts/extract_changelog.py "${TAG_VERSION}" > release_notes.md
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: v${{ steps.vars.outputs.tag_version }}
+          body_path: release_notes.md
+

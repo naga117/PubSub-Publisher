@@ -44,6 +44,32 @@ python build_pyinstaller.py
 
 The app bundle will be in `dist-launcher/PubSub Publisher.app`.
 
+## Release Process (GitHub + Changelog)
+This repository includes automated GitHub releases for each semantic version tag (`vX.Y.Z`).
+
+1. Prepare a new release version and changelog entry:
+```bash
+python scripts/prepare_release.py 1.0.2
+```
+
+2. Review generated changes in:
+- `pubsub_publisher/__init__.py`
+- `PubSub Publisher.spec`
+- `CHANGELOG.md`
+
+3. Commit, tag, and push:
+```bash
+git add pubsub_publisher/__init__.py "PubSub Publisher.spec" CHANGELOG.md
+git commit -m "Release 1.0.2"
+git tag v1.0.2
+git push origin <your-branch> --follow-tags
+```
+
+4. GitHub Actions workflow `.github/workflows/release.yml` automatically:
+- validates tag version matches `__version__`
+- extracts notes for that version from `CHANGELOG.md`
+- creates a GitHub Release with those changelog notes
+
 ## Recent Improvements
 - Reused Pub/Sub clients to reduce publish overhead
 - Bulk publish now queues async publish futures in batches for better throughput
