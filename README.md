@@ -2,6 +2,12 @@
 
 A macOS desktop app to publish messages to Google Cloud Pub/Sub with optional attributes, logs, and CSV export.
 
+## Highlights
+- Native desktop UI built with PyQt6
+- Single message publish and bulk CSV/TSV publish
+- Visible app version in `Settings` and `Help -> About PubSub Publisher`
+- Native macOS menu bar with `File`, `Edit`, `View`, `Window`, and `Help`
+
 ## Requirements
 - Python 3.9+
 - macOS 10.13+
@@ -37,6 +43,20 @@ python build_pyinstaller.py
 ```
 
 The app bundle will be in `dist-launcher/PubSub Publisher.app`.
+
+## Recent Improvements
+- Reused Pub/Sub clients to reduce publish overhead
+- Bulk publish now queues async publish futures in batches for better throughput
+- Debounced project change handling to reduce repeated sync calls and config writes
+- Fixed bundled app startup import issue
+
+## macOS Menu Bar
+- `File -> Preferences` opens the Settings tab
+- `Help -> About PubSub Publisher` shows installed version
+- `View` includes quick tab switching shortcuts:
+  - `Cmd+1`: Publish
+  - `Cmd+2`: Bulk Publish
+  - `Cmd+3`: Settings
 
 ## Config File
 The app stores project IDs in:
