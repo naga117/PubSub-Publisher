@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [1.0.2] - 2026-03-01
+
+### Added
+- Add web release hub and downloadable release artifacts
+- Add automated GitHub releases and changelog workflow
+- Add visible app version and native macOS menu actions
+
+### Changed
+- Update README for version display and macOS menu bar
+- Improve publish performance and fix bundled app startup
+- Update README for GitHub and remove personal identifiers
+- Merge remote main history
+- Initial commit
+- Initial commit: PubSub Publisher app
+
+### Fixed
+- Fix macOS dock icon consistency and refine splash startup flow
+
 ## [1.0.1] - 2026-02-28
 
 ### Added
