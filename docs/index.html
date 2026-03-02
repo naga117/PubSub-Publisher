@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PubSub Publisher Releases</title>
+    <meta
+      name="description"
+      content="Download build versions, view changelogs, track downloads, and read user reviews for PubSub Publisher."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./site-config.js"></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="container">
+        <p class="eyebrow">Release Hub</p>
+        <h1>PubSub Publisher</h1>
+        <p class="subtitle">
+          Download each release, view the changelog, track total downloads, and collect user reviews in one place.
+        </p>
+        <p id="repoLine" class="repo-line"></p>
+        <div class="hero-actions">
+          <a id="latestDownloadLink" class="button" href="#" target="_blank" rel="noopener noreferrer">Download Latest Build</a>
+          <a id="githubReleasesLink" class="button button-secondary" href="#" target="_blank" rel="noopener noreferrer">Open GitHub Releases</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="panel">
+        <div class="section-header">
+          <h2>Project Stats</h2>
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
+        <div class="stats-grid">
+          <article class="stat">
+            <p class="stat-label">Total Releases</p>
+            <p class="stat-value" id="totalReleases">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Total Downloads</p>
+            <p class="stat-value" id="totalDownloads">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Latest Version</p>
+            <p class="stat-value" id="latestVersion">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat-label">Last Published</p>
+            <p class="stat-value" id="latestPublished">-</p>
+          </article>
+        </div>
+        <p class="hint" id="statusLine">Loading release data...</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-header">
+          <h2>Versions and Changelog</h2>
+        </div>
+        <p class="hint">Download counts come from GitHub release assets.</p>
+        <div id="releaseList" class="release-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-header">
+          <h2>User Reviews</h2>
+          <a id="discussionsLink" href="#" target="_blank" rel="noopener noreferrer">Open Discussions</a>
+        </div>
+        <p class="hint" id="reviewsHint"></p>
+        <div id="giscusHost"></div>
+      </section>
+    </main>
+
+    <footer class="container footer">
+      <p>Powered by GitHub Releases, GitHub Pages, and GitHub Discussions.</p>
+    </footer>
+  </body>
+</html>

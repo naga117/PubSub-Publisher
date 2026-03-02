@@ -68,7 +68,8 @@ git push origin <your-branch> --follow-tags
 4. GitHub Actions workflow `.github/workflows/release.yml` automatically:
 - validates tag version matches `__version__`
 - extracts notes for that version from `CHANGELOG.md`
-- creates a GitHub Release with those changelog notes
+- builds the macOS `.app` bundle with PyInstaller
+- uploads a downloadable ZIP + SHA256 checksum to GitHub Release assets
 
 ## Recent Improvements
 - Reused Pub/Sub clients to reduce publish overhead
@@ -87,3 +88,22 @@ git push origin <your-branch> --follow-tags
 ## Config File
 The app stores project IDs in:
 `~/Library/Application Support/PubSubPublisher/config.json`
+
+## Web Release Hub (Downloads + Changelog + Reviews)
+This repo now includes a static website in `docs/` that shows:
+- all release versions
+- changelog notes from each GitHub Release
+- per-asset and total download counts
+- user reviews via GitHub Discussions (using giscus)
+
+### Publish the website
+1. Push `docs/*` and `.github/workflows/pages.yml`.
+2. In GitHub repo settings, enable `Discussions`.
+3. In GitHub repo settings, set `Pages` source to `GitHub Actions`.
+4. Optional for embedded reviews:
+- open `https://giscus.app` and connect this repo
+- copy `repoId` and `categoryId` into `docs/site-config.js`
+- set `giscus.enabled` to `true` in `docs/site-config.js`
+
+The website auto-deploys on pushes to `main` or `master` and can be opened at:
+`https://<owner>.github.io/<repo>/`
